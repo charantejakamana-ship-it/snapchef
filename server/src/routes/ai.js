@@ -3,27 +3,68 @@ import { supabase } from '../supabase.js';
 import { requireAuth } from '../auth.js';
 
 const router = Router();
-const MODEL = process.env.GEMINI_MODEL || 'gemini-2.0-flash';
+// Models are tried in order, so a retired model never breaks the app.
+const MODELS = [
+  process.env.GEMINI_MODEL,
+  'gemini-3.8-flash',
+  'gemini-3.5-flash',
+  'gemini-3.5-flash-lite',
+  'gemini-3.1-flash-lite',
+  'gemini-flash-latest',
+].filter((m, i, a) => m && a.indexOf(m) === i);
 
-async function callGemini(prompt) {
-  const key = process.env.GEMINI_API_KEY;
-  if (!key) throw new Error('AI is not configured yet (missing GEMINI_API_KEY on the server)');
-
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`;
+async function tryModel(model, key, prompt) {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
   const r = await fetch(url, {
     method: 'POST',
     // header auth works for both AIza... and AQ... style keys
     headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
     body: JSON.stringify({
       contents: [{ role: 'user', parts: [{ text: prompt }] }],
-      generationConfig: { temperature: 0.8, maxOutputTokens: 1200 },
+      generationConfig: { temperature: 0.8, maxOutputTokens: 2048 },
     }),
   });
-  const json = await r.json();
-  if (!r.ok) throw new Error(json?.error?.message || 'Gemini request failed');
-  const text = (json?.candidates?.[0]?.content?.parts || []).map((p) => p.text || '').join('').trim();
+  const json = await r.json().catch(() => ({}));
+  if (!r.ok) {
+    const err = new Error(json?.error?.message || `Gemini request failed (${r.status})`);
+    err.status = r.status;
+    throw err;
+  }
+  const text = (json?.candidates?.[0]?.content?.parts || [])
+    .map((p) => p.text || '')
+    .join('')
+    .trim();
   if (!text) throw new Error('The AI returned an empty response, please try again');
   return text;
+}
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// Retry these: model gone / bad request / rate limit / overloaded / server error.
+const RECOVERABLE = new Set([400, 404, 429, 500, 503]);
+
+async function callGemini(prompt) {
+  const key = process.env.GEMINI_API_KEY;
+  if (!key) throw new Error('AI is not configured yet (missing GEMINI_API_KEY on the server)');
+
+  let last;
+  // Two passes over the model list with growing backoff — rides out
+  // temporary "high demand" spikes instead of failing the user.
+  for (let attempt = 0; attempt < 3; attempt++) {
+    for (const model of MODELS) {
+      try {
+        return await tryModel(model, key, prompt);
+      } catch (e) {
+        last = e;
+        if (e.status && !RECOVERABLE.has(e.status)) throw e;
+        console.warn(`[ai] ${model} failed (${e.status || 'n/a'}), falling over`);
+        await sleep(500 * Math.pow(2, attempt));
+      }
+    }
+  }
+  if (last && [429, 500, 503].includes(last.status)) {
+    throw new Error('SnapChef is a little busy right now — please try again in a few seconds.');
+  }
+  throw last || new Error('No Gemini model available');
 }
 
 const PROMPTS = {
