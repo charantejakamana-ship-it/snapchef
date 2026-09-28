@@ -1,5 +1,15 @@
 # 🥗 SnapChef — AI-Powered Fridge-to-Table & Food Waste Reducer
 
+### 🌐 Live
+| | |
+|---|---|
+| **App** | https://snapchef-tau.vercel.app |
+| **API** | https://snapchef-api.onrender.com |
+| **Repo** | https://github.com/charantejakamana-ship-it/snapchef |
+
+> Note: the Render free tier sleeps after ~15 min idle, so the very first
+> request after a nap can take 30-50 seconds. It is instant after that.
+
 Add what's already in your fridge, and Gemini turns it into real recipes,
 storage tips, a "use-first" waste report and a smart shopping list.
 
@@ -33,3 +43,17 @@ cd ../client && npm install && npm run dev          # http://localhost:5173
 | PUT/DELETE | `/api/items/:id` | update / delete own item |
 | POST | `/api/ai/generate` | Gemini: `recipe` \| `summary` \| `waste` \| `shopping` |
 | GET | `/api/health` | health + config check |
+
+## Deployment
+- **Frontend** → Vercel (static build of `client/`, SPA rewrites via `client/vercel.json`)
+- **Backend** → Render (`server/`, health check `/api/health`, auto-deploys on push to `main`)
+- CORS is locked to the Vercel domain via the `CLIENT_URL` env var on Render.
+- All secrets live in Render's environment variables + local `server/.env` (git-ignored).
+
+## Tests
+`server/test-e2e.sh` runs 20 end-to-end checks against any environment:
+```bash
+./server/test-e2e.sh                                  # local
+./server/test-e2e.sh https://snapchef-api.onrender.com  # production
+```
+Covers auth, bcrypt, JWT sessions, CRUD, per-user isolation, validation and all AI modes.
