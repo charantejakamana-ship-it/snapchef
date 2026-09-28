@@ -2,6 +2,7 @@ import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 
+import { supabase } from './supabase.js';
 import authRoutes from './routes/auth.js';
 import itemRoutes from './routes/items.js';
 import aiRoutes from './routes/ai.js';
@@ -43,6 +44,36 @@ app.get('/api/health', (_req, res) =>
     time: new Date().toISOString(),
   })
 );
+
+// Public, fully aggregated community stats for the landing page.
+// No personal data is exposed — only totals.
+let statsCache = { at: 0, data: null };
+app.get('/api/stats', async (_req, res) => {
+  try {
+    if (statsCache.data && Date.now() - statsCache.at < 60_000) {
+      return res.json(statsCache.data);
+    }
+    const [{ count: cooks }, { data: rows }, { count: users }] = await Promise.all([
+      supabase.from('items').select('id', { count: 'exact', head: true }),
+      supabase.from('items').select('status, value_inr'),
+      supabase.from('profiles').select('id', { count: 'exact', head: true }),
+    ]);
+    const list = rows || [];
+    const saved = list
+      .filter((r) => r.status === 'used')
+      .reduce((t, r) => t + Number(r.value_inr || 0), 0);
+    const data = {
+      rupeesSaved: Math.round(saved),
+      ingredientsTracked: cooks || 0,
+      mealsRescued: list.filter((r) => r.status === 'used').length,
+      cooks: users || 0,
+    };
+    statsCache = { at: Date.now(), data };
+    res.json(data);
+  } catch (e) {
+    res.json({ rupeesSaved: 0, ingredientsTracked: 0, mealsRescued: 0, cooks: 0 });
+  }
+});
 
 app.use('/api/auth', authRoutes);
 app.use('/api/items', itemRoutes);

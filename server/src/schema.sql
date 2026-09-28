@@ -16,10 +16,14 @@ create table if not exists public.items (
   title text not null,
   description text,
   ai_summary text,
+  value_inr numeric(10,2),
+  status text not null default 'in_kitchen' check (status in ('in_kitchen','used','wasted')),
+  resolved_at timestamptz,
   created_at timestamptz not null default now()
 );
 
 create index if not exists items_user_id_idx on public.items(user_id);
+create index if not exists items_status_idx on public.items(user_id, status);
 
 -- ROW LEVEL SECURITY ---------------------------------------------------
 alter table public.profiles enable row level security;

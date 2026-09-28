@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { supabase } from '../supabase.js';
 import { requireAuth } from '../auth.js';
+import { clampValue } from '../priceEstimator.js';
 
 const router = Router();
 // Models are tried in order, so a retired model never breaks the app.
@@ -153,11 +154,12 @@ Identify every distinct FOOD ingredient you can actually see. Ignore people, pet
 furniture, utensils, packaging text you cannot read, and anything not edible.
 
 Respond with ONLY a JSON array, no markdown fences, no commentary:
-[{"title":"Ingredient name","description":"short visible detail like quantity, size or ripeness"}]
+[{"title":"Ingredient name","description":"short visible detail like quantity, size or ripeness","value_inr":45}]
 
 Rules:
 - "title" = 1-3 words, singular, capitalised (e.g. "Red Onion", "Greek Yogurt").
 - "description" = max 8 words describing what you SEE (e.g. "3 medium, slightly soft").
+- "value_inr" = typical retail value in Indian Rupees of the visible quantity (a plain number).
 - Maximum 15 items. Merge duplicates.
 - If you can see no edible food at all, respond with exactly: []`;
 
@@ -188,6 +190,7 @@ router.post('/scan', requireAuth, async (req, res) => {
       .map((i) => ({
         title: String(i?.title || '').trim().slice(0, 80),
         description: String(i?.description || '').trim().slice(0, 200),
+        value_inr: clampValue(i?.value_inr),
       }))
       .filter((i) => i.title)
       .filter((i, idx, arr) => arr.findIndex((x) => x.title.toLowerCase() === i.title.toLowerCase()) === idx)

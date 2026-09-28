@@ -46,6 +46,9 @@ cd ../client && npm install && npm run dev          # http://localhost:5173
 | POST | `/api/items/bulk` | add several scanned ingredients at once |
 | POST | `/api/ai/speak` | 🔊 translate + narrate a recipe with an AI voice (WAV) |
 | GET | `/api/ai/languages` | supported narration languages |
+| GET | `/api/items/summary` | 💰 your rupee savings breakdown |
+| PATCH | `/api/items/:id/status` | mark an ingredient cooked / thrown away |
+| GET | `/api/stats` | public, fully aggregated community savings |
 | GET | `/api/health` | health + config check |
 
 ## Deployment

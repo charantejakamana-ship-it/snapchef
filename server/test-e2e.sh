@@ -97,6 +97,31 @@ NOTXT=$(curl -s -X POST $B/api/ai/speak -H "Authorization: Bearer $TOK" -H 'Cont
 NOAU=$(curl -s -X POST $B/api/ai/speak -H 'Content-Type: application/json' -d '{"text":"hi","lang":"en"}')
 [[ $NOAU == *"Not authenticated"* ]] && ok "narration requires login" || no "tts auth" "$NOAU"
 
+echo "[savings]"
+SV=$(curl -s -X POST $B/api/items -H "Authorization: Bearer $TOK" -H 'Content-Type: application/json' -d '{"title":"Paneer","description":"200g"}')
+SVID=$(echo "$SV" | grep -o '"id":"[^"]*' | head -1 | cut -d'"' -f4)
+echo "$SV" | grep -q '"value_inr":[0-9]' && ok "rupee value auto-estimated" || no "value" "$SV"
+echo "$SV" | grep -q '"status":"in_kitchen"' && ok "new item starts in kitchen" || no "status default" "$SV"
+US=$(curl -s -X PATCH $B/api/items/$SVID/status -H "Authorization: Bearer $TOK" -H 'Content-Type: application/json' -d '{"status":"used"}')
+[[ $US == *'"status":"used"'* ]] && ok "mark as cooked" || no "mark used" "$US"
+SUM=$(curl -s $B/api/items/summary -H "Authorization: Bearer $TOK")
+echo "$SUM" | python3 -c "
+import sys,json; d=json.load(sys.stdin); sys.exit(0 if d['saved']>0 and d['counts']['used']>=1 else 1)" \
+  && ok "savings summary counts rupees" || no "summary" "$SUM"
+LIST=$(curl -s $B/api/items -H "Authorization: Bearer $TOK")
+[[ $LIST != *"$SVID"* ]] && ok "cooked item leaves the kitchen list" || no "list filter" ""
+ALL=$(curl -s "$B/api/items?status=all" -H "Authorization: Bearer $TOK")
+[[ $ALL == *"$SVID"* ]] && ok "history still retrievable via ?status=all" || no "status=all" ""
+BADS=$(curl -s -X PATCH $B/api/items/$SVID/status -H "Authorization: Bearer $TOK" -H 'Content-Type: application/json' -d '{"status":"eaten"}')
+[[ $BADS == *"Invalid status"* ]] && ok "invalid status rejected" || no "bad status" "$BADS"
+OTHER=$(curl -s -X PATCH $B/api/items/$SVID/status -H "Authorization: Bearer $T2" -H 'Content-Type: application/json' -d '{"status":"used"}')
+[[ $OTHER == *"not found"* ]] && ok "cannot change another user's item" || no "status isolation" "$OTHER"
+ST=$(curl -s $B/api/stats)
+echo "$ST" | python3 -c "
+import sys,json; d=json.load(sys.stdin); sys.exit(0 if 'rupeesSaved' in d and 'cooks' in d else 1)" \
+  && ok "public stats endpoint (no auth)" || no "stats" "$ST"
+[[ $ST != *email* && $ST != *password* ]] && ok "public stats leak no personal data" || no "stats leak" "$ST"
+
 echo "[cleanup]"
 DL=$(curl -s -X DELETE $B/api/items/$ID -H "Authorization: Bearer $TOK")
 [[ $DL == *'"ok":true'* ]] && ok "delete item" || no "delete" "$DL"

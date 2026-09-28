@@ -5,6 +5,7 @@ import { useAuth } from '../lib/auth.jsx';
 import { useToast } from '../components/Toast.jsx';
 import ScanModal from '../components/ScanModal.jsx';
 import VoicePlayer from '../components/VoicePlayer.jsx';
+import SavingsCard from '../components/SavingsCard.jsx';
 
 const AI_ACTIONS = [
   { mode: 'recipe', label: 'Cook something', icon: '👩‍🍳', hint: 'A full recipe from what you have' },
@@ -42,6 +43,7 @@ export default function Dashboard() {
   const [busyId, setBusyId] = useState(null);
   const [ai, setAi] = useState({ open: false, loading: false, text: '', title: '' });
   const [scanOpen, setScanOpen] = useState(false);
+  const [summary, setSummary] = useState(null);
 
   useEffect(() => { load(); }, []);
 
@@ -51,6 +53,11 @@ export default function Dashboard() {
       setItems(items);
     } catch (e) { toast.error(e.message); }
     finally { setLoading(false); }
+    refreshSummary();
+  }
+
+  async function refreshSummary() {
+    try { setSummary(await api('/api/items/summary')); } catch { /* non-critical */ }
   }
 
   async function addItem(e) {
@@ -61,6 +68,7 @@ export default function Dashboard() {
       const { item } = await api('/api/items', { method: 'POST', body: form });
       setItems((p) => [item, ...p]);
       setForm({ title: '', description: '' });
+      refreshSummary();
       toast.success(`${item.title} added to your kitchen`);
     } catch (e) { toast.error(e.message); }
     finally { setSaving(false); }
@@ -76,6 +84,7 @@ export default function Dashboard() {
       });
       setItems((p) => p.map((i) => (i.id === item.id ? item : i)));
       setEditing(null);
+      refreshSummary();
       toast.success('Item updated');
     } catch (e) { toast.error(e.message); }
     finally { setSaving(false); }
@@ -87,7 +96,23 @@ export default function Dashboard() {
     try {
       await api(`/api/items/${item.id}`, { method: 'DELETE' });
       setItems((p) => p.filter((i) => i.id !== item.id));
+      refreshSummary();
       toast.info(`${item.title} removed`);
+    } catch (e) { toast.error(e.message); }
+    finally { setBusyId(null); }
+  }
+
+  async function setStatus(item, status) {
+    setBusyId(item.id);
+    try {
+      await api(`/api/items/${item.id}/status`, { method: 'PATCH', body: { status } });
+      setItems((p) => p.filter((i) => i.id !== item.id));
+      refreshSummary();
+      if (status === 'used') {
+        toast.success(`Nice! You rescued ₹${Math.round(item.value_inr || 0)} of ${item.title}`);
+      } else {
+        toast.info(`${item.title} marked as thrown away`);
+      }
     } catch (e) { toast.error(e.message); }
     finally { setBusyId(null); }
   }
@@ -145,6 +170,8 @@ export default function Dashboard() {
           You have <b className="text-slate-700">{items.length}</b> {items.length === 1 ? 'ingredient' : 'ingredients'} in your kitchen. Let&apos;s cook something before it spoils.
         </p>
       </div>
+
+      <SavingsCard summary={summary} loading={loading} />
 
       {/* AI actions */}
       <div className="mt-5 grid gap-3 sm:grid-cols-3">
@@ -218,7 +245,9 @@ export default function Dashboard() {
                     <h3 className="truncate text-base font-bold text-slate-900">{item.title}</h3>
                     {item.description && <p className="mt-1 text-sm leading-relaxed text-slate-500">{item.description}</p>}
                   </div>
-                  <span className="chip shrink-0">{new Date(item.created_at).toLocaleDateString()}</span>
+                  <span className="shrink-0 rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700">
+                    ₹{Math.round(item.value_inr || 0)}
+                  </span>
                 </div>
 
                 {item.ai_summary && (
@@ -227,12 +256,28 @@ export default function Dashboard() {
                   </p>
                 )}
 
-                <div className="mt-4 flex flex-wrap gap-2">
-                  <button onClick={() => summarize(item)} disabled={busyId === item.id} className="btn-ghost px-3 py-2 text-xs">
+                <div className="mt-4 grid grid-cols-2 gap-2">
+                  <button
+                    onClick={() => setStatus(item, 'used')}
+                    disabled={busyId === item.id}
+                    className="btn bg-emerald-600 py-2 text-xs text-white hover:bg-emerald-700"
+                  >
+                    ✅ I cooked it
+                  </button>
+                  <button
+                    onClick={() => setStatus(item, 'wasted')}
+                    disabled={busyId === item.id}
+                    className="btn-ghost py-2 text-xs"
+                  >
+                    🗑️ Threw it out
+                  </button>
+                </div>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <button onClick={() => summarize(item)} disabled={busyId === item.id} className="btn-ghost flex-1 px-2 py-2 text-xs">
                     {busyId === item.id ? '…' : '✨ AI tip'}
                   </button>
-                  <button onClick={() => setEditing({ ...item })} className="btn-ghost px-3 py-2 text-xs">Edit</button>
-                  <button onClick={() => removeItem(item)} disabled={busyId === item.id} className="btn-danger px-3 py-2 text-xs">Delete</button>
+                  <button onClick={() => setEditing({ ...item })} className="btn-ghost flex-1 px-2 py-2 text-xs">Edit</button>
+                  <button onClick={() => removeItem(item)} disabled={busyId === item.id} className="btn-danger flex-1 px-2 py-2 text-xs">Delete</button>
                 </div>
               </article>
             ))}
@@ -243,7 +288,7 @@ export default function Dashboard() {
       <ScanModal
         open={scanOpen}
         onClose={() => setScanOpen(false)}
-        onAdded={(added) => setItems((p) => [...added, ...p])}
+        onAdded={(added) => { setItems((p) => [...added, ...p]); refreshSummary(); }}
       />
 
       {/* Edit modal */}
