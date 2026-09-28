@@ -1,0 +1,57 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root { color-scheme: light; }
+
+html, body, #root { height: 100%; }
+body {
+  margin: 0;
+  background: #F8FAFC;
+  color: #0f172a;
+  -webkit-font-smoothing: antialiased;
+}
+
+@layer components {
+  .glass {
+    @apply bg-white/70 backdrop-blur-xl border border-white/70 shadow-soft;
+  }
+  .card {
+    @apply bg-white rounded-2xl border border-slate-200/80 shadow-soft;
+  }
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition
+           active:scale-[.98] disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .btn-primary {
+    @apply btn text-white bg-gradient-to-br from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700
+           shadow-lg shadow-emerald-500/20;
+  }
+  .btn-ghost { @apply btn bg-white text-slate-700 border border-slate-200 hover:bg-slate-50; }
+  .btn-danger { @apply btn bg-rose-50 text-rose-600 border border-rose-200 hover:bg-rose-100; }
+  .input {
+    @apply w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-[15px] text-slate-800
+           placeholder:text-slate-400 outline-none transition
+           focus:border-emerald-400 focus:ring-4 focus:ring-emerald-500/10;
+  }
+  .label { @apply block text-sm font-medium text-slate-600 mb-1.5; }
+  .chip { @apply inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600; }
+}
+
+.aurora::before {
+  content: '';
+  position: fixed; inset: -20% -10% auto -10%; height: 55vh; z-index: -1;
+  background:
+    radial-gradient(45% 55% at 15% 25%, rgba(16,185,129,.20), transparent 60%),
+    radial-gradient(40% 50% at 85% 10%, rgba(56,189,248,.18), transparent 60%),
+    radial-gradient(35% 45% at 55% 0%, rgba(251,191,36,.14), transparent 60%);
+  filter: blur(20px);
+  pointer-events: none;
+}
+
+@keyframes rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+.rise { animation: rise .35s cubic-bezier(.2,.7,.3,1) both; }
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 99px; border: 3px solid #F8FAFC; }
