@@ -13,15 +13,18 @@ const MODELS = [
   'gemini-flash-latest',
 ].filter((m, i, a) => m && a.indexOf(m) === i);
 
-async function tryModel(model, key, prompt) {
+async function tryModel(model, key, prompt, image) {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+  const parts = [{ text: prompt }];
+  if (image) parts.push({ inline_data: { mime_type: image.mimeType, data: image.data } });
+
   const r = await fetch(url, {
     method: 'POST',
     // header auth works for both AIza... and AQ... style keys
     headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
     body: JSON.stringify({
-      contents: [{ role: 'user', parts: [{ text: prompt }] }],
-      generationConfig: { temperature: 0.8, maxOutputTokens: 2048 },
+      contents: [{ role: 'user', parts }],
+      generationConfig: { temperature: image ? 0.2 : 0.8, maxOutputTokens: 2048 },
     }),
   });
   const json = await r.json().catch(() => ({}));
@@ -42,7 +45,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // Retry these: model gone / bad request / rate limit / overloaded / server error.
 const RECOVERABLE = new Set([400, 404, 429, 500, 503]);
 
-async function callGemini(prompt) {
+async function callGemini(prompt, image) {
   const key = process.env.GEMINI_API_KEY;
   if (!key) throw new Error('AI is not configured yet (missing GEMINI_API_KEY on the server)');
 
@@ -52,7 +55,7 @@ async function callGemini(prompt) {
   for (let attempt = 0; attempt < 3; attempt++) {
     for (const model of MODELS) {
       try {
-        return await tryModel(model, key, prompt);
+        return await tryModel(model, key, prompt, image);
       } catch (e) {
         last = e;
         if (e.status && !RECOVERABLE.has(e.status)) throw e;
@@ -135,6 +138,65 @@ router.post('/generate', requireAuth, async (req, res) => {
   } catch (e) {
     console.error('ai', e);
     res.status(500).json({ error: e.message || 'AI request failed' });
+  }
+});
+
+/* ------------------------------------------------------------------
+   POST /api/ai/scan   { image: "data:image/jpeg;base64,..." }
+   Photograph your fridge/counter -> Gemini vision lists the ingredients.
+------------------------------------------------------------------- */
+const MAX_IMAGE_BYTES = 6 * 1024 * 1024;
+
+const SCAN_PROMPT = `You are SnapChef's ingredient scanner. Look at this photo of food items.
+
+Identify every distinct FOOD ingredient you can actually see. Ignore people, pets,
+furniture, utensils, packaging text you cannot read, and anything not edible.
+
+Respond with ONLY a JSON array, no markdown fences, no commentary:
+[{"title":"Ingredient name","description":"short visible detail like quantity, size or ripeness"}]
+
+Rules:
+- "title" = 1-3 words, singular, capitalised (e.g. "Red Onion", "Greek Yogurt").
+- "description" = max 8 words describing what you SEE (e.g. "3 medium, slightly soft").
+- Maximum 15 items. Merge duplicates.
+- If you can see no edible food at all, respond with exactly: []`;
+
+router.post('/scan', requireAuth, async (req, res) => {
+  try {
+    const raw = String(req.body.image || '');
+    const m = raw.match(/^data:(image\/(?:jpeg|jpg|png|webp|heic|heif));base64,(.+)$/i);
+    if (!m) {
+      return res.status(400).json({ error: 'Please upload a valid JPEG, PNG or WebP photo.' });
+    }
+    const [, mimeType, data] = m;
+    if (Buffer.byteLength(data, 'base64') > MAX_IMAGE_BYTES) {
+      return res.status(413).json({ error: 'That photo is too large — please try a smaller one.' });
+    }
+
+    const text = await callGemini(SCAN_PROMPT, { mimeType, data });
+
+    // Gemini occasionally wraps JSON in ``` fences — tolerate it.
+    const cleaned = text.replace(/```json|```/gi, '').trim();
+    const start = cleaned.indexOf('[');
+    const end = cleaned.lastIndexOf(']');
+    let parsed = [];
+    if (start !== -1 && end > start) {
+      try { parsed = JSON.parse(cleaned.slice(start, end + 1)); } catch { parsed = []; }
+    }
+
+    const ingredients = (Array.isArray(parsed) ? parsed : [])
+      .map((i) => ({
+        title: String(i?.title || '').trim().slice(0, 80),
+        description: String(i?.description || '').trim().slice(0, 200),
+      }))
+      .filter((i) => i.title)
+      .filter((i, idx, arr) => arr.findIndex((x) => x.title.toLowerCase() === i.title.toLowerCase()) === idx)
+      .slice(0, 15);
+
+    res.json({ ingredients });
+  } catch (e) {
+    console.error('scan', e);
+    res.status(500).json({ error: e.message || 'Could not read that photo' });
   }
 });
 

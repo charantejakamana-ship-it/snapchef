@@ -65,6 +65,19 @@ A2=$(curl -s -X POST $B/api/ai/generate -H "Authorization: Bearer $TOK" -H 'Cont
 [[ $A2 == *'"result"'* ]] && ok "AI item tip generated" || no "AI summary" "$(echo $A2 | head -c 180)"
 [[ $(curl -s $B/api/items -H "Authorization: Bearer $TOK") == *ai_summary\":\"* ]] && ok "AI tip saved to DB" || echo "  ⚠️  ai_summary not persisted"
 
+echo "[camera]"
+BULK=$(curl -s -X POST $B/api/items/bulk -H "Authorization: Bearer $TOK" -H 'Content-Type: application/json' -d '{"items":[{"title":"Lettuce","description":"1 head"},{"title":"Milk","description":"1L"},{"title":"   "}]}')
+[[ $BULK == *Lettuce* && $BULK == *Milk* ]] && ok "bulk add from photo scan" || no "bulk" "$BULK"
+EMPTY=$(curl -s -X POST $B/api/items/bulk -H "Authorization: Bearer $TOK" -H 'Content-Type: application/json' -d '{"items":[]}')
+[[ $EMPTY == *"No ingredients"* ]] && ok "empty bulk rejected" || no "empty bulk" "$EMPTY"
+BADIMG=$(curl -s -X POST $B/api/ai/scan -H "Authorization: Bearer $TOK" -H 'Content-Type: application/json' -d '{"image":"not-an-image"}')
+[[ $BADIMG == *"valid JPEG"* ]] && ok "invalid photo rejected" || no "bad image" "$BADIMG"
+NOAUTH=$(curl -s -X POST $B/api/ai/scan -H 'Content-Type: application/json' -d '{"image":"x"}')
+[[ $NOAUTH == *"Not authenticated"* ]] && ok "photo scan requires login" || no "scan auth" "$NOAUTH"
+# clean up the bulk rows so the final assertion is meaningful
+for bid in $(echo "$BULK" | grep -o '"id":"[^"]*' | cut -d'"' -f4); do
+  curl -s -X DELETE $B/api/items/$bid -H "Authorization: Bearer $TOK" >/dev/null; done
+
 echo "[cleanup]"
 DL=$(curl -s -X DELETE $B/api/items/$ID -H "Authorization: Bearer $TOK")
 [[ $DL == *'"ok":true'* ]] && ok "delete item" || no "delete" "$DL"

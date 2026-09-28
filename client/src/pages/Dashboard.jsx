@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth.jsx';
 import { useToast } from '../components/Toast.jsx';
+import ScanModal from '../components/ScanModal.jsx';
 
 const AI_ACTIONS = [
   { mode: 'recipe', label: 'Cook something', icon: '👩‍🍳', hint: 'A full recipe from what you have' },
@@ -39,6 +40,7 @@ export default function Dashboard() {
   const [editing, setEditing] = useState(null);
   const [busyId, setBusyId] = useState(null);
   const [ai, setAi] = useState({ open: false, loading: false, text: '', title: '' });
+  const [scanOpen, setScanOpen] = useState(false);
 
   useEffect(() => { load(); }, []);
 
@@ -159,9 +161,22 @@ export default function Dashboard() {
         ))}
       </div>
 
+      {/* Camera scanner */}
+      <button
+        onClick={() => setScanOpen(true)}
+        className="group mt-5 flex w-full items-center gap-4 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 p-5 text-left text-white shadow-lg shadow-emerald-500/25 transition hover:-translate-y-0.5 hover:shadow-xl active:scale-[.99]"
+      >
+        <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-white/20 text-2xl backdrop-blur">📸</span>
+        <span className="min-w-0 flex-1">
+          <span className="block font-bold">Snap your ingredients</span>
+          <span className="block text-sm text-white/80">Photograph your fridge and let AI fill your kitchen</span>
+        </span>
+        <span className="shrink-0 text-xl transition group-hover:translate-x-0.5">→</span>
+      </button>
+
       {/* Add form */}
-      <form onSubmit={addItem} className="card mt-5 p-5">
-        <h2 className="mb-3 text-base font-bold text-slate-900">Add to your kitchen</h2>
+      <form onSubmit={addItem} className="card mt-4 p-5">
+        <h2 className="mb-3 text-base font-bold text-slate-900">Or add one by hand</h2>
         <div className="grid gap-3 sm:grid-cols-[1fr_1.4fr_auto]">
           <input className="input" placeholder="Ingredient (e.g. Spinach)" value={form.title}
             onChange={(e) => setForm({ ...form, title: e.target.value })} maxLength={80} />
@@ -223,6 +238,12 @@ export default function Dashboard() {
           </div>
         )}
       </div>
+
+      <ScanModal
+        open={scanOpen}
+        onClose={() => setScanOpen(false)}
+        onAdded={(added) => setItems((p) => [...added, ...p])}
+      />
 
       {/* Edit modal */}
       <Modal open={!!editing} onClose={() => setEditing(null)} title="Edit ingredient">

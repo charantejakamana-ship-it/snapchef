@@ -30,6 +30,25 @@ router.post('/', async (req, res) => {
   res.status(201).json({ item: data });
 });
 
+// BULK CREATE (used by the camera scanner)
+router.post('/bulk', async (req, res) => {
+  const list = Array.isArray(req.body.items) ? req.body.items : [];
+  const rows = list
+    .map((i) => ({
+      user_id: req.user.id,
+      title: String(i?.title || '').trim().slice(0, 80),
+      description: String(i?.description || '').trim().slice(0, 200),
+    }))
+    .filter((r) => r.title)
+    .slice(0, 15);
+
+  if (rows.length === 0) return res.status(400).json({ error: 'No ingredients to add' });
+
+  const { data, error } = await supabase.from('items').insert(rows).select('*');
+  if (error) return res.status(500).json({ error: error.message });
+  res.status(201).json({ items: data || [] });
+});
+
 // UPDATE (own only)
 router.put('/:id', async (req, res) => {
   const patch = {};

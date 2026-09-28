@@ -42,6 +42,8 @@ cd ../client && npm install && npm run dev          # http://localhost:5173
 | GET/POST | `/api/items` | list / create own items |
 | PUT/DELETE | `/api/items/:id` | update / delete own item |
 | POST | `/api/ai/generate` | Gemini: `recipe` \| `summary` \| `waste` \| `shopping` |
+| POST | `/api/ai/scan` | 📸 Gemini vision: photo of ingredients -> detected list |
+| POST | `/api/items/bulk` | add several scanned ingredients at once |
 | GET | `/api/health` | health + config check |
 
 ## Deployment
