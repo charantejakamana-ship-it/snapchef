@@ -65,6 +65,16 @@ A2=$(curl -s -X POST $B/api/ai/generate -H "Authorization: Bearer $TOK" -H 'Cont
 [[ $A2 == *'"result"'* ]] && ok "AI item tip generated" || no "AI summary" "$(echo $A2 | head -c 180)"
 [[ $(curl -s $B/api/items -H "Authorization: Bearer $TOK") == *ai_summary\":\"* ]] && ok "AI tip saved to DB" || echo "  ⚠️  ai_summary not persisted"
 
+echo "[cuisine]"
+OPT=$(curl -s $B/api/ai/options)
+[[ $OPT == *korean* && $OPT == *southindian* ]] && ok "cuisine options served" || no "options" "$OPT"
+KOR=$(curl -s -X POST $B/api/ai/generate -H "Authorization: Bearer $TOK" -H 'Content-Type: application/json' -d '{"mode":"recipe","cuisine":"korean","quick":true}')
+[[ $KOR == *'"result"'* ]] && ok "Korean-style recipe generated" || no "korean" "$(echo $KOR | head -c 140)"
+VEG=$(curl -s -X POST $B/api/ai/generate -H "Authorization: Bearer $TOK" -H 'Content-Type: application/json' -d '{"mode":"recipe","cuisine":"italian","diet":"veg","meal":"dinner"}')
+[[ $VEG == *'"result"'* ]] && ok "diet + meal filters accepted" || no "veg" "$(echo $VEG | head -c 140)"
+JUNK=$(curl -s -X POST $B/api/ai/generate -H "Authorization: Bearer $TOK" -H 'Content-Type: application/json' -d '{"mode":"recipe","cuisine":"klingon","meal":"brunch"}')
+[[ $JUNK == *'"result"'* ]] && ok "unknown cuisine falls back safely" || no "junk cuisine" "$(echo $JUNK | head -c 140)"
+
 echo "[camera]"
 BULK=$(curl -s -X POST $B/api/items/bulk -H "Authorization: Bearer $TOK" -H 'Content-Type: application/json' -d '{"items":[{"title":"Lettuce","description":"1 head"},{"title":"Milk","description":"1L"},{"title":"   "}]}')
 [[ $BULK == *Lettuce* && $BULK == *Milk* ]] && ok "bulk add from photo scan" || no "bulk" "$BULK"

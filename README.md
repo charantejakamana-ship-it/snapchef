@@ -41,7 +41,8 @@ cd ../client && npm install && npm run dev          # http://localhost:5173
 | GET | `/api/auth/me` | current user |
 | GET/POST | `/api/items` | list / create own items |
 | PUT/DELETE | `/api/items/:id` | update / delete own item |
-| POST | `/api/ai/generate` | Gemini: `recipe` \| `summary` \| `waste` \| `shopping` |
+| POST | `/api/ai/generate` | Gemini: `recipe` \| `summary` \| `waste` \| `shopping` — recipes accept `cuisine`, `meal`, `diet`, `quick`, `spicy` |
+| GET | `/api/ai/options` | cuisine + meal options for the picker |
 | POST | `/api/ai/scan` | 📸 Gemini vision: photo of ingredients -> detected list |
 | POST | `/api/items/bulk` | add several scanned ingredients at once |
 | POST | `/api/ai/speak` | 🔊 translate + narrate a recipe with an AI voice (WAV) |

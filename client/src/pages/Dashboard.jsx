@@ -6,9 +6,10 @@ import { useToast } from '../components/Toast.jsx';
 import ScanModal from '../components/ScanModal.jsx';
 import VoicePlayer from '../components/VoicePlayer.jsx';
 import SavingsCard from '../components/SavingsCard.jsx';
+import RecipeOptions from '../components/RecipeOptions.jsx';
 
 const AI_ACTIONS = [
-  { mode: 'recipe', label: 'Cook something', icon: '👩‍🍳', hint: 'A full recipe from what you have' },
+  { mode: 'recipe', label: 'Cook something', icon: '👩‍🍳', hint: 'Choose a cuisine, get a full recipe' },
   { mode: 'waste', label: 'Use-first report', icon: '🌱', hint: 'What to eat before it spoils' },
   { mode: 'shopping', label: 'Smart list', icon: '🛒', hint: 'Cheap staples that unlock meals' },
 ];
@@ -44,6 +45,7 @@ export default function Dashboard() {
   const [ai, setAi] = useState({ open: false, loading: false, text: '', title: '' });
   const [scanOpen, setScanOpen] = useState(false);
   const [summary, setSummary] = useState(null);
+  const [optionsOpen, setOptionsOpen] = useState(false);
 
   useEffect(() => { load(); }, []);
 
@@ -127,15 +129,25 @@ export default function Dashboard() {
     finally { setBusyId(null); }
   }
 
-  async function runAi(action) {
+  async function runAi(action, opts = {}) {
     setAi({ open: true, loading: true, text: '', title: action.label });
     try {
-      const { result } = await api('/api/ai/generate', { method: 'POST', body: { mode: action.mode } });
+      const { result } = await api('/api/ai/generate', {
+        method: 'POST',
+        body: { mode: action.mode, ...opts },
+      });
       setAi({ open: true, loading: false, text: result, title: action.label });
     } catch (e) {
       setAi({ open: false, loading: false, text: '', title: '' });
       toast.error(e.message);
     }
+  }
+
+  // "Cook something" opens the style picker first.
+  function startCook(opts) {
+    setOptionsOpen(false);
+    const label = opts.cuisine && opts.cuisine !== 'any' ? 'Your recipe' : 'Cook something';
+    runAi({ mode: 'recipe', label }, opts);
   }
 
   const filtered = useMemo(() => {
@@ -176,7 +188,7 @@ export default function Dashboard() {
       {/* AI actions */}
       <div className="mt-5 grid gap-3 sm:grid-cols-3">
         {AI_ACTIONS.map((a) => (
-          <button key={a.mode} onClick={() => runAi(a)}
+          <button key={a.mode} onClick={() => (a.mode === 'recipe' ? setOptionsOpen(true) : runAi(a))}
             className="card group p-4 text-left transition hover:-translate-y-0.5 hover:border-emerald-200 hover:shadow-lg">
             <div className="flex items-center gap-3">
               <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-emerald-50 text-xl">{a.icon}</span>
@@ -284,6 +296,8 @@ export default function Dashboard() {
           </div>
         )}
       </div>
+
+      <RecipeOptions open={optionsOpen} onClose={() => setOptionsOpen(false)} onCook={startCook} />
 
       <ScanModal
         open={scanOpen}

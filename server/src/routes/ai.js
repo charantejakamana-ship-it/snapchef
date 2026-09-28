@@ -77,6 +77,9 @@ Using ONLY (or mostly) these ingredients a user already has at home:
 ${ctx}
 
 Create ONE delicious, realistic recipe. ${extra || ''}
+Assume a normal home kitchen also has basic salt, pepper, cooking oil and water.
+If the chosen style needs a signature item the user lacks, suggest the closest
+substitute from their list rather than inventing ingredients.
 Format in clean markdown-free plain text with these sections and nothing else:
 DISH: <name>
 TIME: <total minutes>
@@ -106,10 +109,61 @@ Suggest a short smart shopping list (max 7 items) of cheap staples that would un
 };
 
 // POST /api/ai/generate  { mode, itemId?, prompt? }
+const CUISINES = {
+  any: '',
+  southindian: 'South Indian',
+  northindian: 'North Indian',
+  chinese: 'Chinese (Indo-Chinese or authentic)',
+  korean: 'Korean',
+  japanese: 'Japanese',
+  thai: 'Thai',
+  italian: 'Italian',
+  mexican: 'Mexican',
+  mediterranean: 'Mediterranean',
+  american: 'American comfort food',
+  continental: 'Continental / European',
+  middleeastern: 'Middle Eastern',
+};
+
+const MEALS = {
+  any: '',
+  breakfast: 'breakfast',
+  lunch: 'lunch',
+  snack: 'a light snack or starter',
+  dinner: 'dinner',
+  dessert: 'a dessert',
+};
+
+function buildStyleBrief({ cuisine, meal, diet, quick, spicy, note }) {
+  const bits = [];
+  const c = CUISINES[cuisine];
+  if (c) bits.push(`Make it ${c} style, with flavours and techniques true to that cuisine.`);
+  const m = MEALS[meal];
+  if (m) bits.push(`It should work as ${m}.`);
+  if (diet === 'veg') bits.push('It must be strictly vegetarian (no meat, fish or egg).');
+  if (diet === 'vegan') bits.push('It must be vegan (no meat, fish, egg or dairy).');
+  if (diet === 'highprotein') bits.push('Prioritise a high-protein result.');
+  if (quick) bits.push('Keep total time under 20 minutes.');
+  if (spicy) bits.push('Make it properly spicy.');
+  if (note) bits.push(`Also consider: ${note}`);
+  return bits.join(' ');
+}
+
 router.post('/generate', requireAuth, async (req, res) => {
   try {
     const mode = String(req.body.mode || 'recipe');
-    const extra = String(req.body.prompt || '').slice(0, 500);
+    let extra = String(req.body.prompt || '').slice(0, 500);
+
+    if (mode === 'recipe') {
+      extra = buildStyleBrief({
+        cuisine: String(req.body.cuisine || 'any'),
+        meal: String(req.body.meal || 'any'),
+        diet: String(req.body.diet || 'any'),
+        quick: Boolean(req.body.quick),
+        spicy: Boolean(req.body.spicy),
+        note: extra,
+      });
+    }
 
     let ctx = '';
     if (mode === 'summary' && req.body.itemId) {
@@ -364,6 +418,14 @@ ${source}`
     console.error('speak', e);
     res.status(500).json({ error: e.message || 'Could not read that aloud' });
   }
+});
+
+// Recipe style options the UI offers.
+router.get('/options', (_req, res) => {
+  res.json({
+    cuisines: Object.entries(CUISINES).map(([id, label]) => ({ id, label: label || 'Surprise me' })),
+    meals: Object.entries(MEALS).map(([id, label]) => ({ id, label: label || 'Any meal' })),
+  });
 });
 
 // Languages the UI offers in its dropdown.
