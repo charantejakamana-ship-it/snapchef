@@ -44,6 +44,8 @@ cd ../client && npm install && npm run dev          # http://localhost:5173
 | POST | `/api/ai/generate` | Gemini: `recipe` \| `summary` \| `waste` \| `shopping` |
 | POST | `/api/ai/scan` | 📸 Gemini vision: photo of ingredients -> detected list |
 | POST | `/api/items/bulk` | add several scanned ingredients at once |
+| POST | `/api/ai/speak` | 🔊 translate + narrate a recipe with an AI voice (WAV) |
+| GET | `/api/ai/languages` | supported narration languages |
 | GET | `/api/health` | health + config check |
 
 ## Deployment

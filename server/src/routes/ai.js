@@ -200,4 +200,172 @@ router.post('/scan', requireAuth, async (req, res) => {
   }
 });
 
+/* ------------------------------------------------------------------
+   POST /api/ai/speak  { text, lang, voice }
+   Reads a recipe aloud with a real AI voice, translating first
+   when the user picks a language other than English.
+------------------------------------------------------------------- */
+const TTS_MODELS = ['gemini-3.8-flash-tts', 'gemini-2.5-flash-preview-tts'];
+
+export const LANGUAGES = {
+  en: 'English',
+  hi: 'Hindi',
+  te: 'Telugu',
+  ta: 'Tamil',
+  kn: 'Kannada',
+  ml: 'Malayalam',
+  mr: 'Marathi',
+  bn: 'Bengali',
+  gu: 'Gujarati',
+  pa: 'Punjabi',
+  ur: 'Urdu',
+  es: 'Spanish',
+  fr: 'French',
+  de: 'German',
+  it: 'Italian',
+  pt: 'Portuguese',
+  ar: 'Arabic',
+  ja: 'Japanese',
+  ko: 'Korean',
+  zh: 'Mandarin Chinese',
+  id: 'Indonesian',
+  ru: 'Russian',
+  tr: 'Turkish',
+  nl: 'Dutch',
+};
+
+const VOICES = new Set(['Kore', 'Puck', 'Charon', 'Aoede', 'Fenrir', 'Leda']);
+
+/** Raw 16-bit PCM from Gemini -> a .wav file the browser can play. */
+function pcmToWav(pcm, sampleRate = 24000, channels = 1, bits = 16) {
+  const byteRate = (sampleRate * channels * bits) / 8;
+  const blockAlign = (channels * bits) / 8;
+  const header = Buffer.alloc(44);
+  header.write('RIFF', 0);
+  header.writeUInt32LE(36 + pcm.length, 4);
+  header.write('WAVE', 8);
+  header.write('fmt ', 12);
+  header.writeUInt32LE(16, 16);
+  header.writeUInt16LE(1, 20); // PCM
+  header.writeUInt16LE(channels, 22);
+  header.writeUInt32LE(sampleRate, 24);
+  header.writeUInt32LE(byteRate, 28);
+  header.writeUInt16LE(blockAlign, 32);
+  header.writeUInt16LE(bits, 34);
+  header.write('data', 36);
+  header.writeUInt32LE(pcm.length, 40);
+  return Buffer.concat([header, pcm]);
+}
+
+async function synthesize(text, voice) {
+  const key = process.env.GEMINI_API_KEY;
+  if (!key) throw new Error('AI is not configured yet (missing GEMINI_API_KEY on the server)');
+
+  const body = JSON.stringify({
+    contents: [{ parts: [{ text }] }],
+    generationConfig: {
+      responseModalities: ['AUDIO'],
+      speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } } },
+    },
+  });
+
+  let last;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    for (const model of TTS_MODELS) {
+      try {
+        const r = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
+          { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key }, body }
+        );
+        const json = await r.json().catch(() => ({}));
+        if (!r.ok) {
+          const e = new Error(json?.error?.message || `TTS failed (${r.status})`);
+          e.status = r.status;
+          throw e;
+        }
+        const part = json?.candidates?.[0]?.content?.parts?.find(
+          (p) => p.inlineData || p.inline_data
+        );
+        const inline = part?.inlineData || part?.inline_data;
+        if (!inline?.data) throw new Error('No audio returned');
+
+        const mime = inline.mimeType || inline.mime_type || '';
+        const raw = Buffer.from(inline.data, 'base64');
+
+        if (/wav/i.test(mime)) return raw; // already a playable wav
+        const rate = Number((mime.match(/rate=(\d+)/) || [])[1]) || 24000;
+        return pcmToWav(raw, rate);
+      } catch (e) {
+        last = e;
+        if (e.status && !RECOVERABLE.has(e.status)) throw e;
+        await sleep(500 * (attempt + 1));
+      }
+    }
+  }
+  if (last && [429, 500, 503].includes(last.status)) {
+    throw new Error('The voice service is busy right now — please try again in a few seconds.');
+  }
+  throw last || new Error('Could not generate audio');
+}
+
+router.post('/speak', requireAuth, async (req, res) => {
+  try {
+    const source = String(req.body.text || '').trim().slice(0, 3000);
+    const lang = String(req.body.lang || 'en');
+    const voice = VOICES.has(req.body.voice) ? req.body.voice : 'Kore';
+
+    if (!source) return res.status(400).json({ error: 'Nothing to read out' });
+    if (!LANGUAGES[lang]) return res.status(400).json({ error: 'That language is not supported yet' });
+
+    // 1. Translate + tidy into natural spoken form when needed.
+    let spoken = source;
+    const name = LANGUAGES[lang];
+    if (lang === 'en') {
+      spoken = await callGemini(
+        `Rewrite this recipe as a natural spoken read-aloud script in English.
+Keep every ingredient, quantity and step accurate. Expand labels like "DISH:" into
+friendly speech (e.g. "Tonight we're making..."). No markdown, no bullet symbols,
+no emoji. Return only the script.
+
+${source}`
+      );
+    } else {
+      spoken = await callGemini(
+        `Translate this recipe into ${name} and rewrite it as a natural spoken
+read-aloud script for a home cook. Keep every ingredient, quantity and step accurate.
+Use ${name} script/characters. Keep well-known ingredient names recognisable.
+No markdown, no bullet symbols, no emoji. Return only the ${name} script.
+
+${source}`
+      );
+    }
+
+    spoken = spoken.slice(0, 4000);
+
+    // 2. Speak it.
+    const instruction =
+      lang === 'en'
+        ? `Read this recipe aloud in a warm, friendly, clear voice at a relaxed pace:\n\n${spoken}`
+        : `Read this ${name} recipe aloud in a warm, friendly, clear voice at a relaxed pace. Speak entirely in ${name}:\n\n${spoken}`;
+
+    const wav = await synthesize(instruction, voice);
+
+    res.json({
+      audio: wav.toString('base64'),
+      mimeType: 'audio/wav',
+      text: spoken,
+      lang,
+      language: name,
+    });
+  } catch (e) {
+    console.error('speak', e);
+    res.status(500).json({ error: e.message || 'Could not read that aloud' });
+  }
+});
+
+// Languages the UI offers in its dropdown.
+router.get('/languages', (_req, res) => {
+  res.json({ languages: Object.entries(LANGUAGES).map(([code, label]) => ({ code, label })) });
+});
+
 export default router;

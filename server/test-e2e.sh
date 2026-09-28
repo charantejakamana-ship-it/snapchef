@@ -78,6 +78,25 @@ NOAUTH=$(curl -s -X POST $B/api/ai/scan -H 'Content-Type: application/json' -d '
 for bid in $(echo "$BULK" | grep -o '"id":"[^"]*' | cut -d'"' -f4); do
   curl -s -X DELETE $B/api/items/$bid -H "Authorization: Bearer $TOK" >/dev/null; done
 
+echo "[voice]"
+LANGS=$(curl -s $B/api/ai/languages)
+[[ $LANGS == *Telugu* && $LANGS == *Hindi* ]] && ok "language list served" || no "languages" "$LANGS"
+SP=$(curl -s -X POST $B/api/ai/speak -H "Authorization: Bearer $TOK" -H 'Content-Type: application/json' -d '{"text":"DISH: Toast\nSTEPS:\n1. Toast the bread.","lang":"en"}')
+[[ $SP == *'"audio"'* ]] && ok "English narration generated" || no "tts en" "$(echo $SP | head -c 150)"
+# valid RIFF/WAV header once decoded?
+echo "$SP" | python3 -c "
+import sys,json,base64
+d=json.load(sys.stdin)
+a=base64.b64decode(d.get('audio',''))
+sys.exit(0 if a[:4]==b'RIFF' and a[8:12]==b'WAVE' and len(a)>10000 else 1)" \
+  && ok "audio is a valid playable WAV" || no "wav header" ""
+BADL=$(curl -s -X POST $B/api/ai/speak -H "Authorization: Bearer $TOK" -H 'Content-Type: application/json' -d '{"text":"hello","lang":"xx"}')
+[[ $BADL == *"not supported"* ]] && ok "unknown language rejected" || no "bad lang" "$BADL"
+NOTXT=$(curl -s -X POST $B/api/ai/speak -H "Authorization: Bearer $TOK" -H 'Content-Type: application/json' -d '{"text":"  ","lang":"en"}')
+[[ $NOTXT == *"Nothing to read"* ]] && ok "empty text rejected" || no "empty tts" "$NOTXT"
+NOAU=$(curl -s -X POST $B/api/ai/speak -H 'Content-Type: application/json' -d '{"text":"hi","lang":"en"}')
+[[ $NOAU == *"Not authenticated"* ]] && ok "narration requires login" || no "tts auth" "$NOAU"
+
 echo "[cleanup]"
 DL=$(curl -s -X DELETE $B/api/items/$ID -H "Authorization: Bearer $TOK")
 [[ $DL == *'"ok":true'* ]] && ok "delete item" || no "delete" "$DL"

@@ -4,6 +4,7 @@ import { api } from '../lib/api';
 import { useAuth } from '../lib/auth.jsx';
 import { useToast } from '../components/Toast.jsx';
 import ScanModal from '../components/ScanModal.jsx';
+import VoicePlayer from '../components/VoicePlayer.jsx';
 
 const AI_ACTIONS = [
   { mode: 'recipe', label: 'Cook something', icon: '👩‍🍳', hint: 'A full recipe from what you have' },
@@ -278,9 +279,12 @@ export default function Dashboard() {
           </div>
         ) : (
           <>
-            <pre className="max-h-[55vh] overflow-y-auto whitespace-pre-wrap rounded-2xl bg-slate-50 p-4 font-sans text-[15px] leading-relaxed text-slate-700">
-              {ai.text}
-            </pre>
+            <div className="max-h-[55vh] overflow-y-auto">
+              <pre className="whitespace-pre-wrap rounded-2xl bg-slate-50 p-4 font-sans text-[15px] leading-relaxed text-slate-700">
+                {ai.text}
+              </pre>
+              <VoicePlayer text={ai.text} />
+            </div>
             <button
               onClick={() => { navigator.clipboard?.writeText(ai.text); toast.success('Copied to clipboard'); }}
               className="btn-ghost mt-4 w-full py-3">Copy</button>
